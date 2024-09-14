@@ -5,19 +5,30 @@ myGui := Gui("Resize")
 myGui.Title := "Repository Manager"
 
 ; Add GUI elements
-myGui.Add("Button", "w150", "Open RepoFolders.txt").OnEvent("Click", OpenTxtFile)
 myGui.Add("Button", "w150", "Check for Updates").OnEvent("Click", CheckForUpdates)
 myGui.Add("Button", "w150", "Update All").OnEvent("Click", UpdateAll)
 myGui.Add("Button", "w150", "Update Selected").OnEvent("Click", UpdateSelected)
 myGui.Add("Button", "w150", "Select All").OnEvent("Click", SelectAll)
 myGui.Add("Button", "w150", "Deselect All").OnEvent("Click", DeselectAll)
+myGui.Add("Button", "w150", "Open RepoFolders.txt").OnEvent("Click", OpenTxtFile)
 
-myGui.Add("ListView", "vRepoListView r10 w600", ["Repository Path", "Owner", "Repo Name", "Updates Available"])
+
+mygui.Add("Text","ys section","Filter text")
+myGui.Add("Edit", "vFilterText w150").OnEvent("Change", FilterListView)
+
+mygui.Add("Text","ys","Filter by column")
+myGui.Add("ComboBox", "vFilterColumn w150", ["Repository Path", "Owner", "Repo Name", "Updates Available","Any"]).OnEvent("Change", FilterListView)
+
+myGUi["FilterColumn"].text := "Any"
+
+myGui.Add("ListView", "xs vRepoListView r10 w600", ["Repository Path", "Owner", "Repo Name", "Updates Available"])
 ogcRepoListView := myGui["RepoListView"]
 
 ; Global variables
 global repos := [] ; Array to store repository data
 global reposToUpdate := [] ; Array to store repositories with updates
+
+SB := MyGui.Add("StatusBar",, "Alex was here")
 
 ; Show GUI
 myGui.Show()
@@ -54,21 +65,22 @@ CheckForUpdates(*) {
         AddReposWithUpdates(folder)
     }
 
-    ; Debug output to verify `reposToUpdate` length
-    ; MsgBox("reposToUpdate Length: " reposToUpdate.length)
-
     ; Populate ListView with the repository details
     for repo in repos {
         updateStatus := repo.updates ? "Yes" : "No"
-        ogcRepoListView.Add(,repo.path, repo.owner, repo.name, updateStatus)
+        ogcRepoListView.Add(, repo.path, repo.owner, repo.name, updateStatus)
     }
 
-    MsgBox(reposToUpdate.length " repositories found with updates.")
+    ; Save ListView data to a file
+    SaveListView()
+    ogcRepoListView.ModifyCol()
+    SB.SetText(reposToUpdate.Length " repositories found with updates.")
+
 }
 
 ; Function to update all repositories
 UpdateAll(*) {
-    global reposToUpdate
+    global reposToUpdate, ogcRepoListView
 
     if reposToUpdate.length = 0 {
         MsgBox("No repositories need updating.")
@@ -85,18 +97,23 @@ UpdateAll(*) {
     for repo in reposToUpdate {
         ProgressPos++
         ProgressValue := (ProgressPos / ProgressMax) * 100
-        ToolTip("Updating repository: " repo.path "`nProgress: " ProgressPos "/" ProgressMax)
+        sb.SetText("Updating repository: " repo.path "`nProgress: " ProgressPos "/" ProgressMax)
 
         ; Update the progress bar
         g["ProgressBar"].Value := ProgressValue
 
         ; Pull updates
         RunWait('cmd.exe /c cd /d "' repo.path '" && git pull',, "Hide")
+
+        ; Update ListView status
+        repo.updates := false
+        UpdateListViewStatus(repo.path, "No")
     }
 
     g.Destroy()
-    ToolTip()
+    
     MsgBox("All repositories updated!")
+    sb.SetText("Alex was here")
 }
 
 ; Function to update selected repositories
@@ -123,18 +140,23 @@ UpdateSelected(*) {
     for repo in selectedRepos {
         ProgressPos++
         ProgressValue := (ProgressPos / ProgressMax) * 100
-        ToolTip("Updating repository: " repo.path "`nProgress: " ProgressPos "/" ProgressMax)
+        sb.SetText("Updating repository: " repo.path "`nProgress: " ProgressPos "/" ProgressMax)
 
         ; Update the progress bar
         g["ProgressBar"].Value := ProgressValue
 
         ; Pull updates
         RunWait('cmd.exe /c cd /d "' repo.path '" && git pull',, "Hide")
+
+        ; Update ListView status
+        repo.updates := false
+        UpdateListViewStatus(repo.path, "No")
     }
 
     g.Destroy()
-    ToolTip()
+    
     MsgBox("Selected repositories updated!")
+    sb.SetText("Alex was here")
 }
 
 ; Function to select all repositories
@@ -176,9 +198,6 @@ HasGitUpdates(folder) {
 
     ; Run the command and capture the output
     output := RunCommand(cmd)
-
-    ; Debug output to check what was captured
-    ; MsgBox("Command Output:`n" output)
 
     ; Regex pattern to match if the branch is behind
     pattern := "Your branch is behind 'origin/[^']+' by (\d+) commit"
@@ -226,4 +245,111 @@ GetSubfolders(folder) {
     Loop Files, folder "\*", "D" ; Loop over directories
         subfolders.Push(A_LoopFileFullPath)
     return subfolders
+}
+
+; Function to update the ListView status of a repository
+UpdateListViewStatus(path, status) {
+    global ogcRepoListView
+    rowIndex := ogcRepoListView.Find(1, path, 1)
+    if rowIndex {
+        ogcRepoListView.Modify(rowIndex - 1, 3, status)
+    }
+}
+
+; Function to filter the ListView
+FilterListView(*) {
+    global ogcRepoListView, myGui
+
+    columnIndex := myGui["FilterColumn"].Value
+    filterText := myGui["FilterText"].Value
+
+    ; Clear the ListView before adding filtered data
+    ogcRepoListView.Delete()
+
+    if (filterText = "Any") {
+        ; Reload ListView data from file
+        LoadListView()
+    } else {
+        file := A_ScriptDir "\ListViewData.txt"
+        originalData := FileRead(file)
+        if (originalData = "") 
+            return
+
+        ; Apply the filter
+        rows := StrSplit(originalData, "`n")
+
+        for rowIndex, row in rows {
+            columns := StrSplit(row, "`t")
+            matches := false
+            if (filterText=""){
+                matches := true
+            }else{
+                ; Check if any column in the row matches the filter
+                for colIndex, column in columns {
+                    if (InStr(column, filterText)) {
+                        matches := true
+                        break
+                    }
+                }
+            }
+            if (matches) {
+                ; Add the row to the ListView
+                ogcRepoListView.Add("", columns*)
+            }
+        }
+    }
+
+    ; Update column widths if necessary
+    ogcRepoListView.ModifyCol()
+
+    ; Update item count label if needed
+    ItemCount := ogcRepoListView.GetCount()
+}
+
+
+
+; Function to save ListView data to a file
+SaveListView() {
+    global ogcRepoListView
+
+    file := A_ScriptDir "\ListViewData.txt"
+    try
+        FileDelete(file)
+
+    ; Retrieve ListView content
+    list := ListViewGetContent(,ogcRepoListView)
+    
+    ; Process each row and column
+    rows := StrSplit(list, "`n")
+    for rowIndex, row in rows {
+        columns := StrSplit(row, "`t")
+        ; Join columns with tabs and append to file
+        FileAppend(Join("`t", columns*) "`n", file)
+    }
+}
+
+; Function to load ListView data from a file
+LoadListView() {
+    global ogcRepoListView
+
+    txtFile := A_ScriptDir "\ListViewData.txt"
+    if !FileExist(txtFile) {
+        return
+    }
+
+    content := FileRead(txtFile, '`n')
+    rows := StrSplit(content, "`n")
+
+    for row in rows {
+        columns := StrSplit(row, "`t")
+        if columns.length = 4 {
+            ogcRepoListView.Add(, columns*)
+        }
+    }
+}
+
+Join(s, h, t*) {
+    for _,x in t
+        h .= s . x
+    return h
 }
