@@ -1,10 +1,8 @@
 /*
     Author          : Anastasiou Alex
     Gmail           : anastasioualex@gmail.com
-
     Github          : https://github.com/alexofrhodes/
-    YouTube         : https://www.youtube.com/channel/UC5QH3fn1zjx0aUjRER_rOjg
-    BuyMeACoffee    : https://www.buymeacoffee.com/AlexOfRhodes
+    YouTube         : https://www.youtube.com/channel/@anastasioualex
 */
 
 ;---AUTO RUN-----------------------------------------------------------------------------
@@ -15,14 +13,14 @@
 #Include include\customTray.ahk
 SetupTray()
 
-global repos := [] 
+global repos := []  
 global reposToUpdate := [] 
 
-OnMessage(0x404, AHK_NOTIFYICON)
+OnMessage(0x404, AHK_NOTIFYICON)    
  
 
 myGui := Gui("Resize")
-myGui.Title := "Repository Manager"
+myGui.Title := "Github Repository Manager"
 
 myGui.Add("Button", "w150", "List Git Repos").OnEvent("Click", ListGitRepos)
 myGui.Add("Button", "w150", "Check for Updates").OnEvent("Click", CheckForUpdates)
@@ -65,7 +63,7 @@ AHK_NOTIFYICON(wParam, lParam,*){
 }
 
 OpenTxtFile(*) {
-    Run(A_ScriptDir "\RepoFolders.txt")
+    Run(A_ScriptDir "\settings\RepoFolders.txt")
 }
 
 ListGitRepos(*) {
@@ -74,7 +72,7 @@ ListGitRepos(*) {
     ogcRepoListView.Delete()
     repos := []
 
-    txtFile := A_ScriptDir "\RepoFolders.txt"
+    txtFile := A_ScriptDir "\settings\RepoFolders.txt"
     if !FileExist(txtFile) {
         Notify.Show('Error', 'RepoFolders.txt not found!', 'iconx',,, 'TC=black MC=black BC=75AEDC style=edge show=slideWest@250 hide=slideEast@250')        
         return
@@ -116,7 +114,9 @@ CheckForUpdates(*) {
     reposToUpdate := []
 
     ; Get the filtered and selected rows
-    selectedRows := ogcRepoListView.GetNext(0, "Selected")
+    selectedrows:=[]
+    try
+        selectedRows := ogcRepoListView.GetNext(0, "Selected")
     
     if (selectedRows.Length = 0) {
         ; Notify.Show('Alert', 'Please select at least one repository to check for updates.', 'icon!',,, 'TC=black MC=black BC=75AEDC style=edge show=slideWest@250 hide=slideEast@250')
@@ -324,7 +324,7 @@ FilterListView(*) {
     if (filterText = "Any") {
         LoadListView()
     } else {
-        file := A_ScriptDir "\ListViewData.txt"
+        file := A_ScriptDir "\Settings\ListViewData.txt"
         originalData := FileRead(file)
         if (originalData = "") 
             return
@@ -356,13 +356,15 @@ FilterListView(*) {
 SaveListView() {
     global ogcRepoListView, repos
 
-    file := A_ScriptDir "\ListViewData.txt"
+    file := A_ScriptDir "\Settings\ListViewData.txt"
     try FileDelete(file)
 
     ; Build the entire content in memory
     fileContent := ""
     for repo in repos {
-        updateStatus := repo.updates ? "Yes" : "No"
+        updateStatus := "N/A"
+        try
+            updateStatus := repo.updates ? "Yes" : "No"
         rowData := Join("`t", repo.path, repo.owner, repo.name, updateStatus)
         fileContent .= rowData "`n"
     }
@@ -375,7 +377,7 @@ SaveListView() {
 LoadListView() {
     global ogcRepoListView
     ogcRepoListView.delete
-    txtFile := A_ScriptDir "\ListViewData.txt"
+    txtFile := A_ScriptDir "\settings\ListViewData.txt"
     if !FileExist(txtFile) {
         return
     }
