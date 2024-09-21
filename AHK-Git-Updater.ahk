@@ -1,4 +1,8 @@
 /*
+    Project         : AHK-Git-Updater
+    Description     : LIST git repositories, CHECK and PULL updates for selected items.
+    Changelog       : 1.0.0 Initial release
+-----------------------------------------------------------------------------------------
     Author          : Anastasiou Alex
     Gmail           : anastasioualex@gmail.com
     Github          : https://github.com/alexofrhodes/
@@ -7,8 +11,11 @@
 
 ;---AUTO RUN-----------------------------------------------------------------------------
 
+#SingleInstance Force
 #Requires AutoHotkey v2
 #Include include\Notify.ahk
+#Include include\Class_LV_Colors.ahk
+#Include include\StyleButton.ahk
 
 #Include include\customTray.ahk
 SetupTray()
@@ -20,39 +27,77 @@ OnMessage(0x404, AHK_NOTIFYICON)
  
 
 myGui := Gui("Resize")
+MyGui.SetFont("q5 s11 ", "Consolas")
+SB := MyGui.Add("StatusBar")
+
 myGui.Title := "Github Repository Manager"
 
-myGui.Add("Button", "w150", "List Git Repos").OnEvent("Click", ListGitRepos)
-myGui.Add("Button", "w150", "Check for Updates").OnEvent("Click", CheckForUpdates)
+btnListRepos := myGui.Add("Button", "w150 y+70", "List Git Repos")
+btnListRepos.OnEvent("Click", ListGitRepos)
+StyleButton(btnListRepos, 0, "info-round")
 
-myGui.Add("Button", "w150", "Update All").OnEvent("Click", UpdateAll)
-myGui.Add("Button", "w150", "Update Selected").OnEvent("Click", UpdateSelected)
-myGui.Add("Button", "w150", "Select All").OnEvent("Click", SelectAll)
-myGui.Add("Button", "w150", "Deselect All").OnEvent("Click", DeselectAll)
+btnCheckForUpdates := myGui.Add("Button", "w150", "Check for Updates")
+btnCheckForUpdates.OnEvent("Click", CheckForUpdates)
+StyleButton(btnCheckForUpdates, 0, "info-round")
 
-myGui.Add("Button", "w150", "Open Repo Folder").OnEvent("Click", OpenRepoFolder)
-myGui.Add("Button", "w150", "Open on GitHub").OnEvent("Click", OpenOnGitHub)
-myGui.Add("Button", "w150", "Open RepoFolders.txt").OnEvent("Click", OpenTxtFile)
+btnUpdateSelected:=myGui.Add("Button", "w150", "Update Selected")
+btnUpdateSelected.OnEvent("Click", UpdateSelected)
+StyleButton(btnUpdateSelected, 0, "info-round")
 
-mygui.Add("Text","ys section","Filter text")
+btnSelectAll := myGui.Add("Button", "w150 y+50", "Select All")
+btnSelectAll.OnEvent("Click", SelectAll)
+StyleButton(btnSelectAll, 0, "info-round")
+
+btnRepoFolder:=myGui.Add("Button", "w150 y+50", "Open Repo Folder")
+btnRepoFolder.OnEvent("Click", OpenRepoFolder)
+StyleButton(btnRepoFolder, 0, "info-round")
+
+btnOpenGithub:=myGui.Add("Button", "w150", "Open on GitHub")
+btnOpenGithub.OnEvent("Click", OpenOnGitHub)
+StyleButton(btnOpenGithub, 0, "info-round")
+
+btnRepoFoldersTXT:=myGui.Add("Button", "w150 y+50", "Open RepoFolders.txt")
+btnRepoFoldersTXT.OnEvent("Click", OpenTxtFile)
+StyleButton(btnRepoFoldersTXT, 0, "info-round")
+
+btnScriptDir:=myGui.Add("Button", "w150", "Open A_ScriptDir")
+btnScriptDir.OnEvent("Click", OpenScriptDir)
+StyleButton(btnScriptDir, 0, "info-round")
+
+
+mygui.Add("Text","y10 section","Filter text")
 myGui.Add("Edit", "vFilterText w150").OnEvent("Change", FilterListView)
 
 mygui.Add("Text","ys","Filter by column")
-myGui.Add("DropDownList", "vFilterColumn w150", ["Repository Path", "Owner", "Repo Name", "Updates Available","Any"]).OnEvent("Change", FilterListView)
+myGui.Add("DropDownList", "vFilterColumn w150", ["Repository Path", "Owner", "Repo Name", "Updates","Any"]).OnEvent("Change", FilterListView)
 
 myGUi["FilterColumn"].text := "Any"
 
-myGui.Add("ListView", "xs vRepoListView r12 w600", ["Repository Path", "Owner", "Repo Name", "Updates Available"])
+myGui.Add("ListView", "xs vRepoListView r12 w1000", ["Repository Path", "Owner", "Repo Name", "Updates"])
 ogcRepoListView := myGui["RepoListView"]
 
-SB := MyGui.Add("StatusBar",, "Alex was here")
+
+CLV := LV_Colors(ogcRepoListView)
+If !IsObject(CLV) {
+   MsgBox("Couldn't create a new LV_Colors object!", "ERROR", 16)
+   ExitApp
+}
+
+clv.SetRowColorScheme(1)
+CLV.SelectionColors(selRowB,selRowT)   ; Set the colors for selected rows
+
+CLV.AlternateRows(evenRowB, evenRowT)
+ogcRepoListView.Opt("+Redraw")
+ogcRepoListView.Focus()
 
 LoadListView()
 
 MyGui.OnEvent("Size", Gui_Size)
-myGui.Show()
+myGui.Show("AutoSize hide")
+mygui.Show("Maximize")
 
 ;---END AUTO RUN-----------------------------------------------------------------------------
+
 
 AHK_NOTIFYICON(wParam, lParam,*){
     if (lParam = 0x201) ; WM_LBUTTONDOWN
@@ -64,6 +109,10 @@ AHK_NOTIFYICON(wParam, lParam,*){
 
 OpenTxtFile(*) {
     Run(A_ScriptDir "\settings\RepoFolders.txt")
+}
+
+OpenScriptDir(*) {
+    Run(A_ScriptDir)
 }
 
 ListGitRepos(*) {
@@ -86,6 +135,7 @@ ListGitRepos(*) {
         }
         AddRepos(folder)
     }
+
     for repo in repos {
         updateStatus := "N/A" 
         ogcRepoListView.Add(, repo.path, repo.owner, repo.name, updateStatus)
@@ -93,6 +143,7 @@ ListGitRepos(*) {
     ogcRepoListView.ModifyCol()
     ogcRepoListView.ModifyCol(4,"AutoHdr")
     SaveListView()
+    sb.SetText(repos.length " of " repos.length " repos displayed.")
 }
 
 AddRepos(folder) {
@@ -112,56 +163,46 @@ CheckForUpdates(*) {
     global repos, reposToUpdate, ogcRepoListView
 
     reposToUpdate := []
-
-    ; Get the filtered and selected rows
-    selectedrows:=[]
-    try
-        selectedRows := ogcRepoListView.GetNext(0, "Selected")
-    
-    if (selectedRows.Length = 0) {
-        ; Notify.Show('Alert', 'Please select at least one repository to check for updates.', 'icon!',,, 'TC=black MC=black BC=75AEDC style=edge show=slideWest@250 hide=slideEast@250')
-        ; return
-        SelectAll()
+    Count := ogcRepoListView.GetCount("S")
+    if (Count = 0) {
+        Notify.Show('Alert', 'Please select at least one repository to check for updates.', 'icon!',,, 'TC=black MC=black BC=75AEDC style=edge show=slideWest@250 hide=slideEast@250')
+        return
+        ; SelectAll()
     }
-
-    ; Loop through selected rows and find corresponding repos based on repo paths
-    for rowIndex in selectedRows {
-        repoPath := ogcRepoListView.GetText(rowIndex, 1)
-
+    RowNumber := 0  ; This causes the first loop iteration to start the search at the top of the list.
+    Loop
+    {
+        RowNumber := ogcRepoListView.GetNext(RowNumber)  ; Resume the search at the row after that found by the previous iteration.
+        if not RowNumber  ; The above returned zero, so there are no more selected rows.
+            break
+        repoPath := ogcRepoListView.GetText(RowNumber, 1)
         for repo in repos {
             if (repo.path = repoPath) {
                 if HasGitUpdates(repo.path) {
                     repo.updates := true
                     reposToUpdate.Push(repo)
-                } else {
+                }else{
                     repo.updates := false
                 }
-                break
-            }
-        }
-    }
-
-    ; Update the ListView with new status for selected rows
-    for rowIndex in selectedRows {
-        repoPath := ogcRepoListView.GetText(rowIndex, 1)
-
-        for repo in repos {
-            if (repo.path = repoPath) {
                 updateStatus := repo.updates ? "Yes" : "No"
-                ogcRepoListView.Modify(rowIndex, 4, updateStatus)
+                ogcRepoListView.Modify(RowNumber, "col4", updateStatus)
                 break
             }
         }
-    }
-
-    SaveListView()  ; Save updated ListView
+    }    
+    SaveListView() 
     Notify.Show('Info', reposToUpdate.Length ' filtered repositories found with updates.', 'iconi',,, 'TC=black MC=black BC=75AEDC style=edge show=slideWest@250 hide=slideEast@250')
 }
 
 OpenRepoFolder(*) {
     global ogcRepoListView, repos
-
-    selectedRow := ogcRepoListView.GetNext(0, "Focused")
+    Count := ogcRepoListView.GetCount("S")
+    if count > 1
+    {
+        Notify.Show('Info', 'Select only one repo to open its folder.', 'iconi',,, 'TC=black MC=black BC=75AEDC style=edge show=slideWest@250 hide=slideEast@250')
+        return
+    }
+    selectedRow := ogcRepoListView.GetNext(0)
     if selectedRow {
         repo := repos[selectedRow]
         Run(repo.path)
@@ -187,33 +228,30 @@ OpenOnGitHub(*) {
     }
 }
 
-UpdateAll(*) {
-    SelectAll()
-    UpdateSelected()
-}
-
-
 UpdateSelected(*) {
     global repos, ogcRepoListView
 
     selectedRepos := []
-    selectedRows := ogcRepoListView.GetNext(0, "Selected")
-
-    for rowIndex in selectedRows {
-        repoPath := ogcRepoListView.GetText(rowIndex, 1)
-
-        for repo in repos {
-            if (repo.path = repoPath) {
-                selectedRepos.Push(repo)
-                break
-            }
-        }
-    }
-
-    if selectedRepos.length = 0 {
+    Count := ogcRepoListView.GetCount("S")
+    
+    if Count = 0 {
         Notify.Show('Alert', 'Please select a repository first.', 'icon!',,, 'TC=black MC=black BC=75AEDC style=edge show=slideWest@250 hide=slideEast@250')
         return
     }
+
+    Loop
+        {
+            RowNumber := ogcRepoListView.GetNext(RowNumber)  ; Resume the search at the row after that found by the previous iteration.
+            if not RowNumber  ; The above returned zero, so there are no more selected rows.
+                break
+            repoPath := ogcRepoListView.GetText(RowNumber, 1)
+            for repo in repos {
+                if (repo.path = repoPath) {
+                    selectedRepos.Push(repo)
+                    break
+                }
+            }    
+        }    
 
     mNotifyGUI_Prog := Notify.Show('Updating ' selectedRepos.Length,,,,, 'dur=0 prog=w325 dgc=0')
 
@@ -240,10 +278,6 @@ SelectAll(*) {
     ogcRepoListView.Modify(0, "+Select")
 }
 
-DeselectAll(*) {
-    global ogcRepoListView
-    ogcRepoListView.Modify(0, "-Select")
-}
 
 AddReposWithUpdates(folder) {
     global repos, reposToUpdate
@@ -352,7 +386,6 @@ FilterListView(*) {
     ItemCount := ogcRepoListView.GetCount()
     sb.SetText(ItemCount " of " repos.length " repos displayed.")
 }
-
 SaveListView() {
     global ogcRepoListView, repos
 
@@ -361,12 +394,21 @@ SaveListView() {
 
     ; Build the entire content in memory
     fileContent := ""
+    first := true  ; To track the first row
+
     for repo in repos {
         updateStatus := "N/A"
         try
             updateStatus := repo.updates ? "Yes" : "No"
+        
         rowData := Join("`t", repo.path, repo.owner, repo.name, updateStatus)
-        fileContent .= rowData "`n"
+
+        if !first  ; Add a newline before all rows except the first one
+            fileContent .= "`n"
+        else
+            first := false  ; Mark that we've added the first row
+
+        fileContent .= rowData
     }
 
     ; Write the full content at once
@@ -374,8 +416,10 @@ SaveListView() {
 }
 
 
+
 LoadListView() {
-    global ogcRepoListView
+    global ogcRepoListView, repos
+    Repos := []
     ogcRepoListView.delete
     txtFile := A_ScriptDir "\settings\ListViewData.txt"
     if !FileExist(txtFile) {
@@ -391,11 +435,13 @@ LoadListView() {
             repoPath := columns[1]  
             if DirExist(repoPath) {  
                 ogcRepoListView.Add(, columns*)
+                AddRepos(repoPath)
             }
         }
     }
     ogcRepoListView.ModifyCol()
     ogcRepoListView.ModifyCol(4,"AutoHdr")
+    sb.SetText(repos.length " of " repos.length " repos displayed.")
 }
 
 Join(s, h, t*) {
