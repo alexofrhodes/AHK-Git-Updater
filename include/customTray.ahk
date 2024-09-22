@@ -1,4 +1,7 @@
 
+
+#Requires AutoHotkey v2
+
 SetupTray() {
     TrayIcon := StrReplace(A_ScriptDir "\icons\" . A_ScriptName, ".ahk", ".ico")
 
@@ -23,7 +26,7 @@ SetupTray() {
     }
 }
 
-FollowLink(url) {
+FollowLink(url,*) {
     Run url
 }
 

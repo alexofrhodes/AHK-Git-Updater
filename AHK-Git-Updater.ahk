@@ -27,14 +27,14 @@ OnMessage(0x404, AHK_NOTIFYICON)
  
 
 myGui := Gui("Resize")
-MyGui.SetFont("q5 s11 ", "Consolas")
+MyGui.SetFont("q5 s11  ", "Consolas")
 SB := MyGui.Add("StatusBar")
 
 myGui.Title := "Github Repository Manager"
 
 btnListRepos := myGui.Add("Button", "w150 y+70", "List Git Repos")
 btnListRepos.OnEvent("Click", ListGitRepos)
-StyleButton(btnListRepos, 0, "info-round")
+StyleButton(btnListRepos, 0, "warning-round")
 
 btnCheckForUpdates := myGui.Add("Button", "w150", "Check for Updates")
 btnCheckForUpdates.OnEvent("Click", CheckForUpdates)
@@ -42,33 +42,40 @@ StyleButton(btnCheckForUpdates, 0, "info-round")
 
 btnUpdateSelected:=myGui.Add("Button", "w150", "Update Selected")
 btnUpdateSelected.OnEvent("Click", UpdateSelected)
-StyleButton(btnUpdateSelected, 0, "info-round")
+StyleButton(btnUpdateSelected, 0, "success-round")
 
-btnSelectAll := myGui.Add("Button", "w150 y+50", "Select All")
+btnSelectAll := myGui.Add("Button", "w150", "Select All")
 btnSelectAll.OnEvent("Click", SelectAll)
-StyleButton(btnSelectAll, 0, "info-round")
+StyleButton(btnSelectAll, 0, "info-outline-round")
 
-btnRepoFolder:=myGui.Add("Button", "w150 y+50", "Open Repo Folder")
-btnRepoFolder.OnEvent("Click", OpenRepoFolder)
-StyleButton(btnRepoFolder, 0, "info-round")
-
-btnOpenGithub:=myGui.Add("Button", "w150", "Open on GitHub")
+btnOpenGithub:=myGui.Add("Button", "w150 y+50", "Open on GitHub")
 btnOpenGithub.OnEvent("Click", OpenOnGitHub)
-StyleButton(btnOpenGithub, 0, "info-round")
+StyleButton(btnOpenGithub, 0, "info-outline-round")
 
-btnRepoFoldersTXT:=myGui.Add("Button", "w150 y+50", "Open RepoFolders.txt")
+btnRepoFolder:=myGui.Add("Button", "w150", "Open Repo Folder")
+btnRepoFolder.OnEvent("Click", OpenRepoFolder)
+StyleButton(btnRepoFolder, 0, "warning-outline-round")
+
+btnRepoFoldersTXT:=myGui.Add("Button", "w150", "Edit RepoFolders.txt")
 btnRepoFoldersTXT.OnEvent("Click", OpenTxtFile)
-StyleButton(btnRepoFoldersTXT, 0, "info-round")
+StyleButton(btnRepoFoldersTXT, 0, "warning-outline-round")
 
 btnScriptDir:=myGui.Add("Button", "w150", "Open A_ScriptDir")
 btnScriptDir.OnEvent("Click", OpenScriptDir)
-StyleButton(btnScriptDir, 0, "info-round")
+StyleButton(btnScriptDir, 0, "warning-outline-round")
 
+btnDeleteLVtxt:=myGui.Add("Button", "w150 y+50", "Reset LV data")
+btnDeleteLVtxt.OnEvent("Click", DeleteLVtxt)
+StyleButton(btnDeleteLVtxt, 0, "critical-round")
 
-mygui.Add("Text","y10 section","Filter text")
+btnClearFilter:=myGui.Add("Button", "y30 h5 section", "x")
+btnClearFilter.OnEvent("Click", ClearFilter)
+StyleButton(btnClearFilter, 0, "critical-round")
+
+mygui.Add("Text","y10","Filter text")
 myGui.Add("Edit", "vFilterText w150").OnEvent("Change", FilterListView)
 
-mygui.Add("Text","ys","Filter by column")
+mygui.Add("Text","y10","Filter by column")
 myGui.Add("DropDownList", "vFilterColumn w150", ["Repository Path", "Owner", "Repo Name", "Updates","Any"]).OnEvent("Change", FilterListView)
 
 myGUi["FilterColumn"].text := "Any"
@@ -83,7 +90,7 @@ If !IsObject(CLV) {
    ExitApp
 }
 
-clv.SetRowColorScheme(1)
+clv.SetRowColorScheme(1)               ; alex
 CLV.SelectionColors(selRowB,selRowT)   ; Set the colors for selected rows
 
 CLV.AlternateRows(evenRowB, evenRowT)
@@ -117,7 +124,6 @@ OpenScriptDir(*) {
 
 ListGitRepos(*) {
     global repos, ogcRepoListView
-
     ogcRepoListView.Delete()
     repos := []
 
@@ -127,6 +133,11 @@ ListGitRepos(*) {
         return
     }
     content := FileRead(txtFile, '`n')
+    if (Trim(content) = "<Delete this comment and list a folder or folders, one in each line, containing repos at any depth>"){
+        run txtFile
+        return
+    }
+
     folders := StrSplit(content, "`n")
     for folder in folders {
         folder := Trim(folder)
@@ -136,12 +147,14 @@ ListGitRepos(*) {
         AddRepos(folder)
     }
 
+    ogcRepoListView.opt("-redraw")
     for repo in repos {
         updateStatus := "N/A" 
         ogcRepoListView.Add(, repo.path, repo.owner, repo.name, updateStatus)
     }
     ogcRepoListView.ModifyCol()
     ogcRepoListView.ModifyCol(4,"AutoHdr")
+    ogcRepoListView.opt("+redraw")
     SaveListView()
     sb.SetText(repos.length " of " repos.length " repos displayed.")
 }
@@ -169,12 +182,24 @@ CheckForUpdates(*) {
         return
         ; SelectAll()
     }
+
+    mNotifyGUI_Prog := Notify.Show('Checking ' count ' repos for Updates',,,,, 'dur=0 prog=w325 dgc=0')
+
+    ProgressMax := count
+    ProgressPos := 0
+
+
     RowNumber := 0  ; This causes the first loop iteration to start the search at the top of the list.
     Loop
     {
         RowNumber := ogcRepoListView.GetNext(RowNumber)  ; Resume the search at the row after that found by the previous iteration.
-        if not RowNumber  ; The above returned zero, so there are no more selected rows.
+        if not RowNumber  
             break
+
+        ProgressPos++
+        ProgressValue := (ProgressPos / ProgressMax) * 100
+        mNotifyGUI_Prog['prog'].Value := ProgressValue
+
         repoPath := ogcRepoListView.GetText(RowNumber, 1)
         for repo in repos {
             if (repo.path = repoPath) {
@@ -191,41 +216,40 @@ CheckForUpdates(*) {
         }
     }    
     SaveListView() 
-    Notify.Show('Info', reposToUpdate.Length ' filtered repositories found with updates.', 'iconi',,, 'TC=black MC=black BC=75AEDC style=edge show=slideWest@250 hide=slideEast@250')
+
+    Notify.Destroy(mNotifyGUI_Prog['hwnd'])
+    Sleep(500)
+    Notify.Show('Info', reposToUpdate.Length ' repositories found with updates.', 'iconi',,, 'TC=black MC=black BC=75AEDC style=edge show=slideWest@250 hide=slideEast@250')
+
 }
 
 OpenRepoFolder(*) {
     global ogcRepoListView, repos
     Count := ogcRepoListView.GetCount("S")
-    if count > 1
+    if count > 1 || count = 0
     {
-        Notify.Show('Info', 'Select only one repo to open its folder.', 'iconi',,, 'TC=black MC=black BC=75AEDC style=edge show=slideWest@250 hide=slideEast@250')
+        Notify.Show('Info', 'Select one repo to open its folder.', 'iconi',,, 'TC=black MC=black BC=75AEDC style=edge show=slideWest@250 hide=slideEast@250')
         return
     }
     selectedRow := ogcRepoListView.GetNext(0)
-    if selectedRow {
-        repo := repos[selectedRow]
-        Run(repo.path)
-    } else {
-        Notify.Show('Alert', 'Please select a repository first.', 'icon!',,, 'TC=black MC=black BC=75AEDC style=edge show=slideWest@250 hide=slideEast@250')        
-    }
+    path := ogcRepoListView.GetText(selectedRow,1)
+    Run(path)
 }
 
 OpenOnGitHub(*) {
     global ogcRepoListView, repos
 
-    selectedRow := ogcRepoListView.GetNext(0, "Focused")
-    if selectedRow {
-        repo := repos[selectedRow]
-        if repo.owner != "Unknown" && repo.name != "Unknown" {
-            url := "https://github.com/" repo.owner "/" repo.name
-            Run(url)
-        } else {
-            MsgBox("Unable to determine GitHub URL for this repository.")
-        }
-    } else {
+    try
+        selectedRow := ogcRepoListView.GetNext(0, "Focused")
+    RowNumber := 0  ; This causes the first loop iteration to start the search at the top of the list.
+    RowNumber := ogcRepoListView.GetNext(RowNumber)  ; Resume the search at the row after that found by the previous iteration.
+    if not RowNumber  
+    {
         Notify.Show('Alert', 'Please select a repository first.', 'icon!',,, 'TC=black MC=black BC=75AEDC style=edge show=slideWest@250 hide=slideEast@250')        
+        return
     }
+    url := "https://github.com/" ogcRepoListView.GetText(RowNumber,2) "/" ogcRepoListView.GetText(RowNumber,3)
+    Run(url)
 }
 
 UpdateSelected(*) {
@@ -238,13 +262,15 @@ UpdateSelected(*) {
         Notify.Show('Alert', 'Please select a repository first.', 'icon!',,, 'TC=black MC=black BC=75AEDC style=edge show=slideWest@250 hide=slideEast@250')
         return
     }
-
+    ogcRepoListView.opt("-redraw")
+    RowNumber := 0
     Loop
         {
             RowNumber := ogcRepoListView.GetNext(RowNumber)  ; Resume the search at the row after that found by the previous iteration.
             if not RowNumber  ; The above returned zero, so there are no more selected rows.
                 break
             repoPath := ogcRepoListView.GetText(RowNumber, 1)
+            ogcRepoListView.Modify(RowNumber, "col4", "No")
             for repo in repos {
                 if (repo.path = repoPath) {
                     selectedRepos.Push(repo)
@@ -264,9 +290,10 @@ UpdateSelected(*) {
         mNotifyGUI_Prog['prog'].Value := ProgressValue
         RunWait('cmd.exe /c cd /d "' repo.path '" && git pull',, "Hide")
         repo.updates := false
-        UpdateListViewStatus(repo.path, "No")
     }
+    ogcRepoListView.opt("+redraw")
 
+    SaveListView()
     Notify.Destroy(mNotifyGUI_Prog['hwnd'])
     Sleep(500)
     Notify.Show('Info', 'Selected repositories updated.', 'iconi',,, 'TC=black MC=black BC=75AEDC style=edge show=slideWest@250 hide=slideEast@250')
@@ -297,25 +324,27 @@ AddReposWithUpdates(folder) {
         }
     }
 }
-
 HasGitUpdates(folder) {
-    cmd := 'cmd.exe /c cd /d "' folder '" && git status'
+    cmd := 'cd /d "' folder '" && git status'
     output := RunCommand(cmd)
     pattern := "Your branch is behind 'origin/[^']+' by (\d+) commit"
     if RegExMatch(output, pattern, &match) {
         commitsBehind := match[1]
-        return commitsBehind != "0" 
+        return commitsBehind != "0"
     } else {
-        return false 
+        return false
     }
 }
 
 RunCommand(command) {
-    shell := ComObject("WScript.Shell")
-    exec := shell.Exec(command)
-    result := exec.StdOut.ReadAll()
-    return result
+    tempFile := A_Temp "\git_output.txt"
+    try 
+        FileDelete tempFile
+    RunWait('cmd.exe /c ' command ' > "' tempFile '"', , 'Hide')
+    output := FileRead(tempFile)
+    return output
 }
+
 
 ParseGitInfo(folder) {
     repo := {}
@@ -341,51 +370,64 @@ GetSubfolders(folder) {
     return subfolders
 }
 
-UpdateListViewStatus(path, status) {
-    global ogcRepoListView
-    rowIndex := ogcRepoListView.Find(1, path, 1)
-    if rowIndex {
-        ogcRepoListView.Modify(rowIndex, 3, status)
-    }
-}
-
 FilterListView(*) {
-    global ogcRepoListView, myGui
-    columnIndex := myGui["FilterColumn"].Value
-    filterText := myGui["FilterText"].Value
+    global ogcRepoListView, myGui, repos
+    
+    if (repos.Length = ogcRepoListView.GetCount()) AND (myGui["FilterText"].text = "")
+        return
+
     ogcRepoListView.Delete()
-
-    if (filterText = "Any") {
-        LoadListView()
-    } else {
-        file := A_ScriptDir "\Settings\ListViewData.txt"
+    filterText := myGui["FilterText"].Value
+    if filterText = ""
+    {
+        LoadListView
+        return
+    }
+    comboboxIndex := myGui["FilterColumn"].Value
+    file := A_ScriptDir "\Settings\ListViewData.txt"
+    if !FileExist(file) {
+        myGui["FilterText"].Value := ""  
+        return
+    }
+    try {
         originalData := FileRead(file)
-        if (originalData = "") 
-            return
+    } catch {
+        MsgBox "Error reading the file: " file
+        return
+    }
+    if (originalData = "") 
+        return
 
-        rows := StrSplit(originalData, "`n")
-        for rowIndex, row in rows {
-            columns := StrSplit(row, "`t")
-            matches := false
-            if (filterText=""){
+    ogcRepoListView.opt("-Redraw")
+    rows := StrSplit(originalData, "`n")  
+    for rowIndex, row in rows {
+        if (StrLen(Trim(row)) = 0) 
+            continue
+
+        columns := StrSplit(row, "`t") 
+        matches := false
+
+        if (myGui["FilterColumn"].text = "Any") {  
+            if (InStr(row, filterText)) {
                 matches := true
-            }else{
-                for colIndex, column in columns {
-                    if (InStr(column, filterText)) {
-                        matches := true
-                        break
-                    }
-                }
             }
-            if (matches) {
-                ogcRepoListView.Add("", columns*)
+        } else {
+            selectedColumnIndex := comboboxIndex         
+            if InStr(columns[selectedColumnIndex], filterText) {
+                matches := true
             }
         }
+        if (matches) {
+            ogcRepoListView.Add("", columns*)
+        }
     }
+    ogcRepoListView.opt("+Redraw")
 
     ItemCount := ogcRepoListView.GetCount()
     sb.SetText(ItemCount " of " repos.length " repos displayed.")
 }
+
+
 SaveListView() {
     global ogcRepoListView, repos
 
@@ -456,6 +498,18 @@ Gui_Size(thisGui, MinMax, Width, Height)
         return
     mygui["RepoListView"].GetPos(&X, &Y, &lvWidth, &lvHeight)
     mygui["RepoListView"].Move(,,  Width - 20 -x , Height - 40 -y)
+}
+
+DeleteLVtxt(*){
+    if MsgBox('Will delete stored ListView data.`n Just run "List Repos" again to populate.',,"0x4") = "No"
+        return
+    file := A_ScriptDir "\Settings\ListViewData.txt"
+    try FileDelete file
+    ogcRepoListView.delete
+}
+ClearFilter(*){
+    myGui["FilterText"].text := ""
+    FilterListView()
 }
 
 Escape::ExitApp
