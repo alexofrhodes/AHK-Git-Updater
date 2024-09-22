@@ -155,6 +155,7 @@ ListGitRepos(*) {
     ogcRepoListView.ModifyCol()
     ogcRepoListView.ModifyCol(4,"AutoHdr")
     ogcRepoListView.opt("+redraw")
+    mygui.move()
     SaveListView()
     sb.SetText(repos.length " of " repos.length " repos displayed.")
 }
